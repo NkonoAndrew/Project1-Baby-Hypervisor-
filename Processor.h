@@ -6,17 +6,24 @@
 #include <string>
 #include <vector>
 
+using namespace std;
+
+struct CPUState {
+    uint32_t GPR[16]; // General Purpose Registers
+    uint32_t LR;      // Link Register
+    uint32_t PC;      // Program Counter
+    int IE;           // Interrupt Enable Bit
+    int IRQ;          // Interrupt ReQuest
+};
+
 class Processor {
 public:
     Processor();
-    void op_addiu(const std::vector<std::string>& operands);
+    void op_addiu(const vector<string>& operands);
     void dumpState();
 
 private:
-    std::map<std::string, int32_t> registers;
-    uint32_t pc;
-    int32_t hi;
-    int32_t lo;
+    CPUState cpu_state;
 };
 
 #endif // PROCESSOR_H
