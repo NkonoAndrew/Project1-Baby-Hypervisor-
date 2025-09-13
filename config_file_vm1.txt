@@ -1,0 +1,2 @@
+vm_exec_slice_in_instructions=10   
+vm_binary=/home/nkonoandrew/CMPE244/Project1-Baby-Hypervisor--1/vm1_binary.txt
