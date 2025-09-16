@@ -23,18 +23,13 @@ struct CPUState {
 // It contains the CPU state and methods to execute MIPS instructions.
 class Processor {
 public:
-    // Initializes the processor state.
     Processor();
-    // Dumps the current state of the processor to the console.
     void dumpState();
 
-    // Accessors for the Program Counter.
     uint32_t get_pc() const;
     void set_pc(uint32_t value);
     void increment_pc();
 
-    // Instruction implementations are grouped by the number of operands.
-    // 3-Operand Instructions
     void op_add(const vector<string>& operands);
     void op_sub(const vector<string>& operands);
     void op_addi(const vector<string>& operands);
@@ -50,23 +45,18 @@ public:
     void op_sll(const vector<string>& operands);
     void op_srl(const vector<string>& operands);
 
-    // 2-Operand Instructions
     void op_mult(const vector<string>& operands);
     void op_div(const vector<string>& operands);
     void op_li(const vector<string>& operands);
     void op_move(const vector<string>& operands);
 
-    // 1-Operand Instructions
     void op_mfhi(const vector<string>& operands);
     void op_mflo(const vector<string>& operands);
 
-    // Special Commands
     void op_dump_processor_state();
 
 private:
-    // Helper function to convert a register name (e.g., "$1") to an index.
     int get_reg_index(const std::string& reg);
-    // The current state of the CPU.
     CPUState cpu_state;
 };
 
