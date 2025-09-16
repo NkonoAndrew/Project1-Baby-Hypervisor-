@@ -74,7 +74,11 @@ void VirtualMachine::run() {
 
 // Parses and executes a single line of machine code.
 void VirtualMachine::execute_instruction(const string& instruction_line) {
-    istringstream iss(instruction_line);
+    string temp_line = instruction_line;
+    // Replace commas with spaces to correctly tokenize operands.
+    std::replace(temp_line.begin(), temp_line.end(), ',', ' ');
+
+    istringstream iss(temp_line);
     // Tokenize the instruction line to separate the opcode and operands.
     vector<string> tokens{istream_iterator<string>{iss},
                                  istream_iterator<string>{}};
@@ -111,6 +115,24 @@ void VirtualMachine::execute_instruction(const string& instruction_line) {
         cpu.op_li(tokens);
     } else if (opcode == "DUMP_PROCESSOR_STATE") {
         cpu.op_dump_processor_state();
+    } else if (opcode == "addu") {
+        cpu.op_addu(tokens);
+    } else if (opcode == "subu") {
+        cpu.op_subu(tokens);
+    } else if (opcode == "andi") {
+        cpu.op_andi(tokens);
+    } else if (opcode == "ori") {
+        cpu.op_ori(tokens);
+    } else if (opcode == "mult") {
+        cpu.op_mult(tokens);
+    } else if (opcode == "div") {
+        cpu.op_div(tokens);
+    } else if (opcode == "move") {
+        cpu.op_move(tokens);
+    } else if (opcode == "mfhi") {
+        cpu.op_mfhi(tokens);
+    } else if (opcode == "mflo") {
+        cpu.op_mflo(tokens);
     }
     // Future instructions will be handled by adding more 'else if' blocks here.
     else {

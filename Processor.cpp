@@ -12,7 +12,7 @@ Processor::Processor() {
     cpu_state.IRQ = 0;
     cpu_state.HI = 0;
     cpu_state.LO = 0;
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < 32; ++i) {
         cpu_state.GPR[i] = 0;
     }
 }
@@ -53,7 +53,7 @@ int Processor::get_reg_index(const std::string& reg) {
             return -1;
         }
 
-        if (index >= 0 && index < 16) {
+        if (index >= 0 && index < 32) {
             return index;
         }
     } catch (const std::exception& e) {
@@ -72,8 +72,8 @@ void Processor::dumpState() {
     cout << "IRQ: " << cpu_state.IRQ << endl;
     cout << "HI: " << cpu_state.HI << endl;
     cout << "LO: " << cpu_state.LO << endl;
-    for (int i = 0; i < 16; ++i) {
-        cout << "GPR[" << i << "]: " << cpu_state.GPR[i] << endl;
+    for (int i = 0; i < 32; ++i) {
+        cout << "R" << i << "=[" << cpu_state.GPR[i] << "]" << endl;
     }
 }
 

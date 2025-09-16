@@ -10,7 +10,7 @@ using namespace std;
 
 // Represents the state of the CPU, including registers and control bits.
 struct CPUState {
-    uint32_t GPR[16]; // General Purpose Registers ($zero, $v0-$v1, $a0-$a3, $t0-$t7, $s0-$s7)
+    uint32_t GPR[32]; // General Purpose Registers 0-31
     uint32_t PC;      // Program Counter
     uint32_t HI;      // High-order bits of multiplication result
     uint32_t LO;      // Low-order bits of multiplication result, or division remainder
