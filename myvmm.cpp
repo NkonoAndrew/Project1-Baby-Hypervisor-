@@ -28,18 +28,21 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Initialize VMs, one for each config file, and store them in a vector, so we can manage multiple VMs
     vector<VirtualMachine> vms;
     for (const auto& config_file : config_files) {
         vms.emplace_back(config_file);
     }
 
-    // For now, we can just have a placeholder for the execution loop
     cout << "\nStarting VM execution..." << endl;
-    for (auto& vm : vms) {
-        vm.run();
+    for (size_t i = 0; i < vms.size(); ++i) {
+        cout << "Starting VM " << i + 1 << " execution..." << endl;
+        vms[i].run();
+        cout << "VM " << i + 1 << " completed." << endl;
+        if (i < vms.size() - 1) {
+            cout << "--------------------" << endl;
+        }
     }
-    cout << "VM execution finished." << endl;
+    cout << "All VM executions finished." << endl;
 
     return 0;
 }

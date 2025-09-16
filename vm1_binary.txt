@@ -8,7 +8,7 @@ mul $7,$4,$5
 and $8,$2,$3
 or $9,$1,$4
 xor $10,$6,$8
-or $11,$4,100
+ori $11,$4,100
 sll $12,$7,10
 srl $13,$8,10
 DUMP_PROCESSOR_STATE

@@ -6,18 +6,23 @@
 #include <vector>
 #include <map>
 
+using namespace std;
+
 class VirtualMachine {
 public:
-    VirtualMachine(const std::string& config_file_path);
+    VirtualMachine(const string& config_file_path);
     void run();
     void print_config();
 
 private:
-    void load_config(const std::string& config_file_path);
-    
-    std::map<std::string, std::string> config;
+    void load_config(const string& config_file_path);
+    void load_binary();
+    void execute_instruction(const string& instruction_line);
+
+    map<string, string> config;
+    vector<string> instructions;
     Processor cpu;
-    // Memory, etc. will be added here
+    string config_dir;
 };
 
-#endif // VIRTUAL_MACHINE_H
+#endif
