@@ -1,11 +1,22 @@
 #include "VirtualMachine.h"
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <sstream>
 
 using namespace std;
+
+// Helper function to trim leading/trailing whitespace from a string
+void trim(string& s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), s.end());
+}
 
 // Initializes a VM by loading its configuration and binary file.
 VirtualMachine::VirtualMachine(const string& config_file_path) {
@@ -35,6 +46,8 @@ void VirtualMachine::load_config(const string& config_file_path) {
         istringstream iss(line);
         string key, value;
         if (getline(iss, key, '=') && getline(iss, value)) {
+            trim(key);
+            trim(value);
             config[key] = value;
         }
     }
