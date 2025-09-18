@@ -1,2 +1,2 @@
 vm_exec_slice_in_instructions=10  
-vm_binary=vm2_binary.txt
+vm_binary=vm2_binary.txt 
