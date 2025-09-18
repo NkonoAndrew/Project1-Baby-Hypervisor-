@@ -36,8 +36,11 @@ int main(int argc, char *argv[]) {
     cout << "\nStarting VM execution..." << endl;
     for (size_t i = 0; i < vms.size(); ++i) {
         cout << "Starting VM " << i + 1 << " execution..." << endl;
-        vms[i].run();
-        cout << "VM " << i + 1 << " completed." << endl;
+        if (vms[i].run()) {
+            cout << "VM " << i + 1 << " completed." << endl;
+        } else {
+            cout << "VM " << i + 1 << " failed due to an execution error at pc = " << vms[i].get_current_pc() << "." << endl;
+        }
         if (i < vms.size() - 1) {
             cout << "--------------------" << endl;
         }
@@ -46,3 +49,4 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+

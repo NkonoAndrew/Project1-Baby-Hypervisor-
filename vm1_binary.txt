@@ -1,4 +1,4 @@
-li $1,6
+li $1,2
 li $2,9
 li $3,12
 add $4,$1,$2
@@ -12,3 +12,4 @@ ori $11,$4,100
 sll $12,$7,10
 srl $13,$8,10
 DUMP_PROCESSOR_STATE
+

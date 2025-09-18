@@ -11,13 +11,14 @@ using namespace std;
 class VirtualMachine {
 public:
     VirtualMachine(const string& config_file_path);
-    void run();
+    bool run(); // Returns true on success, false on failure
     void print_config();
+    uint32_t get_current_pc() const;
 
 private:
     void load_config(const string& config_file_path);
     void load_binary();
-    void execute_instruction(const string& instruction_line);
+    bool execute_instruction(const string& instruction_line);
 
     map<string, string> config;
     vector<string> instructions;

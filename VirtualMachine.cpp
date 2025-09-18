@@ -26,7 +26,6 @@ VirtualMachine::VirtualMachine(const string& config_file_path) {
 }
 
 // Loads the VM's configuration from a file.
-// The configuration file specifies parameters like the path to the binary.
 void VirtualMachine::load_config(const string& config_file_path) {
     size_t last_slash = config_file_path.find_last_of("/\\");
     if (string::npos != last_slash) {
@@ -38,17 +37,26 @@ void VirtualMachine::load_config(const string& config_file_path) {
     ifstream config_file(config_file_path);
     if (!config_file.is_open()) {
         cerr << "Error: Unable to open config file " << config_file_path << endl;
-        return;
+        exit(EXIT_FAILURE);
     }
 
     string line;
+    int line_num = 0;
     while (getline(config_file, line)) {
+        line_num++;
+        trim(line);
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+
         istringstream iss(line);
         string key, value;
         if (getline(iss, key, '=') && getline(iss, value)) {
             trim(key);
             trim(value);
             config[key] = value;
+        } else {
+            cerr << "Warning: Malformed line " << line_num << " in config file, skipping: \"" << line << "\"" << endl;
         }
     }
 }
@@ -58,18 +66,19 @@ void VirtualMachine::load_binary() {
     auto it = config.find("vm_binary");
     if (it == config.end()) {
         cerr << "Error: vm_binary not found in config" << endl;
-        return;
+        exit(EXIT_FAILURE);
     }
 
     string binary_path = config_dir + it->second;
     ifstream binary_file(binary_path);
     if (!binary_file.is_open()) {
         cerr << "Error: Unable to open binary file " << binary_path << endl;
-        return;
+        exit(EXIT_FAILURE);
     }
 
     string line;
     while (getline(binary_file, line)) {
+        trim(line); // Trim each line to remove extraneous whitespace and control characters
         instructions.push_back(line);
     }
 }
@@ -82,17 +91,25 @@ void VirtualMachine::print_config() {
 }
 
 // The main execution loop of the virtual machine.
-// It fetches, decodes, and executes instructions sequentially.
-void VirtualMachine::run() {
+bool VirtualMachine::run() {
     while (cpu.get_pc() < instructions.size()) {
         string instruction_line = instructions[cpu.get_pc()];
-        execute_instruction(instruction_line);
+
+        // If the line is empty after trimming, we've reached the end of the program.
+        if (instruction_line.empty()) {
+            return true; // Gracefully exit.
+        }
+
+        if (!execute_instruction(instruction_line)) {
+            return false;
+        }
         cpu.increment_pc();
     }
+    return true; 
 }
 
 // Parses and executes a single line of machine code.
-void VirtualMachine::execute_instruction(const string& instruction_line) {
+bool VirtualMachine::execute_instruction(const string& instruction_line) {
     string temp_line = instruction_line;
     std::replace(temp_line.begin(), temp_line.end(), ',', ' ');
 
@@ -100,8 +117,9 @@ void VirtualMachine::execute_instruction(const string& instruction_line) {
     vector<string> tokens{istream_iterator<string>{iss},
                                  istream_iterator<string>{}};
 
-    if (tokens.empty()) {
-        return;
+    // Since empty lines are handled in run(), this now only skips comments.
+    if (tokens.empty() || tokens[0].find("#") == 0) {
+        return true; 
     }
 
     string opcode = tokens[0];
@@ -125,8 +143,6 @@ void VirtualMachine::execute_instruction(const string& instruction_line) {
         cpu.op_xor(tokens);
     } else if (opcode == "sll") {
         cpu.op_sll(tokens);
-    } else if (opcode.find("#") == 0) {
-        return;
     } else if (opcode == "srl") {
         cpu.op_srl(tokens);
     } else if (opcode == "li") {
@@ -153,6 +169,12 @@ void VirtualMachine::execute_instruction(const string& instruction_line) {
         cpu.op_mflo(tokens);
     }
     else {
-        cerr << "Error: Unknown instruction '" << opcode << "'" << endl;
+        cerr << "Error: At line " << cpu.get_pc() + 1 << ": Unknown instruction '" << opcode << "'" << endl;
+        return false;
     }
+    return true;
+}
+
+uint32_t VirtualMachine::get_current_pc() const {
+    return cpu.get_pc();
 }
