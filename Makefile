@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -std=c++11 -Wall
 
 # Source files for the main application
-VMM_SRCS = myvmm.cpp VirtualMachine.cpp Processor.cpp
+VMM_SRCS = myvmm.cpp
 VMM_OBJS = $(VMM_SRCS:.cpp=.o)
 VMM_EXEC = myvmm
 
