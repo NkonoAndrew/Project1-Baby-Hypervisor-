@@ -1,47 +1,61 @@
 # Baby Hypervisor
 
-This project is a lightweight, text-based hypervisor that simulates the execution of multiple Virtual Machines (VMs) on a single host. It is designed to demonstrate the core concepts of virtualization, including VM management, configuration parsing, and isolated instruction execution.
+This project is a lightweight, text-based hypervisor that simulates the execution of multiple Virtual Machines (VMs). It demonstrates core virtualization concepts, including VM management, configuration parsing, isolated instruction execution, and state snapshotting.
 
-Each VM runs a program written in a simplified, MIPS-like assembly language. The hypervisor reads configuration files to set up the environment for each VM and then executes its binary instruction file.
+Each VM runs a program in a simplified, MIPS-like assembly language. The hypervisor can start a VM from scratch or restore its exact state from a previously saved snapshot file.
 
 ## Key Features
 
-- **Multi-VM Management**: Can load and run multiple VMs concurrently, specified via command-line arguments.
-- **Configuration Files**: Each VM is configured with a simple `.txt` file that specifies its binary program.
-- **MIPS-like Instruction Set**: The processor for each VM supports a subset of MIPS arithmetic and logical instructions.
-- **Relative Pathing**: VM binaries can be referenced with paths relative to their configuration files, making the project portable.
+- **Multi-VM Management**: Load and run multiple VMs, specified via command-line arguments.
+- **Configuration Files**: Each VM is defined by a simple `.txt` file that points to its binary program.
+- **State Snapshots**:
+  - **Save State**: A running VM can execute a `SNAPSHOT` instruction to save its complete CPU state (registers, PC) to a file.
+  - **Load State**: The hypervisor can launch a VM directly from a snapshot file, resuming execution exactly where it left off.
+- **MIPS-like Instruction Set**: The VM's processor supports a subset of MIPS arithmetic and logical instructions.
+- **Robust Error Handling**: The instruction parser validates formats and operand types, exiting on errors to prevent undefined behavior.
 
 ## How to Use
 
 ### 1. Build the Program
 
-Compile the project using the provided `Makefile`. Open a terminal in the project directory and run:
+Compile the project using the provided `Makefile`. This creates the `myvmm` executable.
 
 ```bash
 make
 ```
 
-This command compiles the C++ source files and creates an executable named `myvmm`.
-
 ### 2. Run the Hypervisor
 
-Execute the program from your terminal, using the `-v` flag to specify the configuration file for each VM you want to run.
+Execute the program from your terminal, using flags to specify configurations and optional snapshots.
 
-**To run two VMs:**
+**Syntax:**
 ```bash
-./myvmm -v config_file_vm1.txt -v config_file_vm2.txt
+./myvmm -v <config_file> [-s <snapshot_file>] ...
 ```
 
-**To run a single VM:**
-```bash
-./myvmm -v config_file_vm1.txt
-```
+- `-v <config_file>`: **(Required)** Specifies a VM to run via its configuration file.
+- `-s <snapshot_file>`: **(Optional)** Loads the VM state from a snapshot. This flag applies to the most recent `-v` flag.
 
-The program will print the state of each VM's registers upon completion of its instruction set.
+**Examples:**
+
+- **Run two VMs from scratch:**
+  ```bash
+  ./myvmm -v config_file_vm1.txt -v config_file_vm2.txt
+  ```
+
+- **Run one VM from a snapshot:**
+  ```bash
+  ./myvmm -v config_file_vm1.txt -s snapshot_vm1
+  ```
+
+- **Run two VMs—one from a snapshot, one from scratch:**
+  ```bash
+  ./myvmm -v config_file_vm1.txt -s snapshot_vm1 -v config_file_vm2.txt
+  ```
 
 ## Supported MIPS Instructions
 
-The simulator supports the following arithmetic and logical instructions:
+The simulator supports the following instructions. Invalid instruction formats or operand counts will cause the program to exit with an error.
 
 | Instruction | Example                  | Description                                       |
 |-------------|--------------------------|---------------------------------------------------|
@@ -62,4 +76,10 @@ The simulator supports the following arithmetic and logical instructions:
 | `mfhi`      | `mfhi $3`                | Move From HI: Copies `HI` to a register.          |
 | `mflo`      | `mflo $3`                | Move From LO: Copies `LO` to a register.          |
 
-Additionally, the custom command `DUMP_PROCESSOR_STATE` can be used to print the current register values at any point in a program.
+### Special Instructions
+
+| Instruction              | Example                             | Description                                           |
+|--------------------------|-------------------------------------|-------------------------------------------------------|
+| `DUMP_PROCESSOR_STATE`   | `DUMP_PROCESSOR_STATE`              | Prints the current CPU register values to the console.|
+| `SNAPSHOT`               | `SNAPSHOT my_snapshot.snap`         | Saves the current CPU state to the specified file.    |
+
