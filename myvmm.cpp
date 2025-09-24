@@ -1,3 +1,13 @@
+/*
+    myvmm.cpp, a simple virtual machine monitor (VMM) that can run multiple virtual machines (VMs)
+    sequentially. Each VM is configured via a config file and can optionally load its state from
+    a snapshot file. The VMM supports a basic set of MIPS-like instructions and can create snapshots
+    of the VM state during execution. The VMM is implemented in C++ and uses standard libraries for
+    file handling and string manipulation. It provides error handling for invalid configurations,
+    instructions, and operands, ensuring robust execution of the virtual machines. 
+
+*/
+
 #include <iostream>
 #include <unistd.h>
 #include <vector>
@@ -62,35 +72,55 @@ public:
     void op_dump_processor_state();
 
 private:
-    int get_reg_index(const std::string& reg);
+    // Helper to get register index from string (e.g., "$1" -> 1)
+    int get_reg_index(const string& reg);
+
+    // Current CPU state
     CPUState cpu_state;
 };
 
 // --- VirtualMachine.h ---
 class VirtualMachine {
 public:
+    // Constructor to initialize VM with config and optional snapshot
     VirtualMachine(const string& config_file_path, const string& snapshot_file_path);
+
+    // Main execution loop
     bool run();
+
+    // Utility functions
     void print_config();
+
+    // Get current program counter
     uint32_t get_current_pc() const;
 
 private:
+    // Helper functions
     void load_config(const string& config_file_path);
     void load_binary();
     void load_from_snapshot(const string& snapshot_file_path);
-    void create_snapshot(const std::string& filename);
+    void create_snapshot(const string& filename);
+
+    // Instruction execution, returns false on error, true otherwise, including end of program
     bool execute_instruction(const string& instruction_line);
 
+    // Configuration and state, including instruction list
     map<string, string> config;
+
+    // List of instructions loaded from binary
     vector<string> instructions;
+
+    // Processor instance
     Processor cpu;
+
+    // Directory of the config file for relative paths
     string config_dir;
 };
 
 // --- Processor Implementation ---
 
 // Checks if an operand is a valid register (e.g., "$5").
-bool is_register(const std::string& operand) {
+bool is_register(const string& operand) {
     if (operand.length() < 2 || operand[0] != '$') return false;
     for (size_t i = 1; i < operand.length(); ++i) {
         if (!isdigit(operand[i])) return false;
@@ -109,7 +139,7 @@ bool is_immediate(const string& operand) {
     }
 }
 
-// Formats an instruction for clear error messages.
+// Formats an instruction for clear error messages, showing received operands. 
 string format_received_instruction(const string& opcode, const vector<string>& operands) {
     string received = opcode;
     if (!operands.empty()) {
@@ -169,10 +199,12 @@ void Processor::increment_pc() {
     cpu_state.PC++;
 }
 
+// Sets the entire CPU state to a new state.
 void Processor::set_cpu_state(const CPUState& new_state) {
     cpu_state = new_state;
 }
 
+// Returns the current CPU state.
 CPUState Processor::get_cpu_state() const {
     return cpu_state;
 }
@@ -545,6 +577,7 @@ void VirtualMachine::print_config() {
 
 // Main execution loop of the virtual machine.
 bool VirtualMachine::run() {
+    // Execute instructions until the end of the instruction list or an error occurs.
     while (cpu.get_pc() < instructions.size()) {
         string instruction_line = instructions[cpu.get_pc()];
         if (instruction_line.empty()) return true; // End of program
@@ -614,6 +647,7 @@ struct VMInfo {
 };
 
 int main(int argc, char *argv[]) {
+    // Vector to hold information about each VM to be created.
     vector<VMInfo> vm_infos;
     int opt;
 
@@ -638,6 +672,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Ensure at least one VM configuration is provided.
     if (vm_infos.empty()) {
         cerr << "Error: At least one config file must be provided with -v." << endl;
         return EXIT_FAILURE;
