@@ -20,6 +20,10 @@
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 using namespace std;
 
@@ -27,7 +31,6 @@ using namespace std;
 class Processor;
 class VirtualMachine;
 
-// --- Processor.h ---
 struct CPUState {
     uint32_t GPR[32]; // General-purpose registers
     uint32_t PC;      // Program Counter
@@ -38,6 +41,10 @@ struct CPUState {
     int IRQ;          // Interrupt Request
 };
 
+// Forward declaration for serialization function
+string serialize_state(const CPUState& state);
+
+// --- Processor.h ---
 class Processor {
 public:
     Processor();
@@ -70,6 +77,7 @@ public:
     void op_mfhi(const vector<string>& operands);
     void op_mflo(const vector<string>& operands);
     void op_dump_processor_state();
+    void op_migrate(const vector<string>& operands);
 
 private:
     // Helper to get register index from string (e.g., "$1" -> 1)
@@ -93,6 +101,9 @@ public:
 
     // Get current program counter
     uint32_t get_current_pc() const;
+
+    // Public method to allow the server to load a migrated state
+    void set_cpu_state(const CPUState& new_state);
 
 private:
     // Helper functions
@@ -432,13 +443,147 @@ void Processor::op_dump_processor_state() {
     if (!cin.eof()) dumpState();
 }
 
-// --- VirtualMachine Implementation ---
+// Implements the MIGRATE instruction (Client-Side Logic).
+// This function captures the current CPU state, serializes it, and sends it
+// over a TCP socket to a listening server. It then halts the local VM.
+void Processor::op_migrate(const vector<string>& operands) {
+    // 1. Validate Operands: Ensure the instruction has one argument in IP:PORT format.
+    if (operands.size() != 1) {
+        cerr << "Error: MIGRATE instruction requires exactly one operand in the format IP_ADDRESS:PORT." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    string target = operands[0];
+    size_t colon_pos = target.find(':');
+    if (colon_pos == string::npos) {
+        cerr << "Error: Invalid format for MIGRATE. Expected IP_ADDRESS:PORT." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    string ip_str = target.substr(0, colon_pos);
+    string port_str = target.substr(colon_pos + 1);
+    int port;
+    try {
+        port = stoi(port_str);
+    } catch (const exception& e) {
+        cerr << "Error: Invalid port number '" << port_str << "'." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // 2. Capture and Modify CPU State for Migration.
+    // The PC is incremented before serialization to ensure the receiving server
+    // starts execution at the *next* instruction.
+    CPUState state = get_cpu_state();
+    state.PC++; 
+
+    // 3. Serialize State into a string for network transfer.
+    string serialized_data = serialize_state(state);
+
+    // 4. Network Client Logic: Connect and send the serialized state.
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        cerr << "Error: Socket creation failed." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip_str.c_str(), &serv_addr.sin_addr) <= 0) {
+        cerr << "Error: Invalid address or address not supported." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        cerr << "Error: Connection failed to " << ip_str << ":" << port << "." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    send(sock, serialized_data.c_str(), serialized_data.length(), 0);
+    cout << "Migration data sent successfully to " << ip_str << ":" << port << "." << endl;
+    
+    close(sock);
+
+    // 5. Stop Local Execution by setting the PC to -1.
+    // The main run loop will detect this value and terminate.
+    cpu_state.PC = -1;
+}
 
 // Helper function to trim leading/trailing whitespace from a string.
 void trim(string& s) {
     s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
     s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
 }
+
+// --- Serialization/Deserialization ---
+
+// Serializes the CPU state into a key-value pair string format for network transfer.
+string serialize_state(const CPUState& state) {
+    stringstream ss;
+    ss << "PC=" << state.PC << "\n";
+    ss << "HI=" << state.HI << "\n";
+    ss << "LO=" << state.LO << "\n";
+    ss << "LR=" << state.LR << "\n";
+    ss << "IE=" << state.IE << "\n";
+    ss << "IRQ=" << state.IRQ << "\n";
+    for (int i = 0; i < 32; ++i) {
+        ss << "R" << i << "=" << state.GPR[i] << "\n";
+    }
+    return ss.str();
+}
+
+// Deserializes a string containing CPU state data back into a CPUState struct.
+// This function is used by the server to reconstruct the state of a migrated VM.
+CPUState deserialize_state(const string& data) {
+    CPUState state = {}; // Zero-initialize
+    stringstream ss(data);
+    string line;
+
+    while (getline(ss, line)) {
+        trim(line);
+        if (line.empty()) continue;
+
+        size_t equals_pos = line.find('=');
+        if (string::npos == equals_pos) {
+            cerr << "Warning: Malformed line in serialized data, skipping: \"" << line << "\"" << endl;
+            continue;
+        }
+
+        string key = line.substr(0, equals_pos);
+        string value_str = line.substr(equals_pos + 1);
+        
+        try {
+            uint32_t value = stoul(value_str);
+
+            if (key == "PC") state.PC = value;
+            else if (key == "HI") state.HI = value;
+            else if (key == "LO") state.LO = value;
+            else if (key == "LR") state.LR = value;
+            else if (key == "IE") state.IE = value;
+            else if (key == "IRQ") state.IRQ = value;
+            else if (key[0] == 'R') {
+                try {
+                    int reg_index = stoi(key.substr(1));
+                    if (reg_index >= 0 && reg_index < 32) {
+                        state.GPR[reg_index] = value;
+                    } else {
+                        cerr << "Warning: Invalid register index in serialized data: " << key << endl;
+                    }
+                } catch (const exception& e) {
+                    cerr << "Warning: Malformed register key in serialized data, skipping: " << key << endl;
+                }
+            }
+        } catch (const std::exception& e) {
+            cerr << "Warning: Invalid value in serialized data for key '" << key << "', skipping: " << value_str << endl;
+        }
+    }
+    return state;
+}
+
+
+// --- VirtualMachine Implementation ---
 
 // Initializes a VM by loading its configuration and binary file.
 VirtualMachine::VirtualMachine(const string& config_file_path, const string& snapshot_file_path) {
@@ -495,7 +640,11 @@ void VirtualMachine::load_binary() {
     string line;
     while (getline(binary_file, line)) {
         trim(line);
-        instructions.push_back(line);
+        // Only add non-empty lines to the instructions list.
+        // This prevents blank lines in the source file from terminating execution.
+        if (!line.empty()) {
+            instructions.push_back(line);
+        }
     }
 }
 
@@ -576,25 +725,49 @@ void VirtualMachine::print_config() {
 }
 
 // Main execution loop of the virtual machine.
+// It fetches and executes instructions sequentially until the program ends
+// or the special halt signal (PC = -1) is received from MIGRATE.
 bool VirtualMachine::run() {
     // Execute instructions until the end of the instruction list or an error occurs.
     while (cpu.get_pc() < instructions.size()) {
         string instruction_line = instructions[cpu.get_pc()];
-        if (instruction_line.empty()) return true; // End of program
+
         if (!execute_instruction(instruction_line)) return false; // Execution error
+
+        // Check if the MIGRATE instruction was executed, which sets PC to -1 to halt.
+        if (cpu.get_pc() == -1) {
+            return true; 
+        }
+
         cpu.increment_pc();
     }
     return true;
 }
 
 // Parses and executes a single line of machine code.
+// It handles comment stripping, tokenization, and dispatches to the correct
+// instruction handler in the Processor class.
 bool VirtualMachine::execute_instruction(const string& instruction_line) {
-    string temp_line = instruction_line;
+    // First, strip any inline comments
+    string temp_line = instruction_line.substr(0, instruction_line.find('#'));
+    trim(temp_line);
+
+    // If the line is empty after stripping comments, skip it.
+    if (temp_line.empty()) {
+        return true;
+    }
+
     std::replace(temp_line.begin(), temp_line.end(), ',', ' ');
     istringstream iss(temp_line);
     vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}};
-    if (tokens.empty() || tokens[0].find("#") == 0) return true; // Skip comments and empty lines
+
+    // This check is redundant given the one above, but safe to keep.
+    if (tokens.empty()) {
+        return true;
+    }
+
     string opcode = tokens[0];
+    transform(opcode.begin(), opcode.end(), opcode.begin(), ::tolower); // Convert opcode to lowercase
     tokens.erase(tokens.begin());
 
     // Dispatch to the correct instruction handler
@@ -609,7 +782,7 @@ bool VirtualMachine::execute_instruction(const string& instruction_line) {
     else if (opcode == "sll") cpu.op_sll(tokens);
     else if (opcode == "srl") cpu.op_srl(tokens);
     else if (opcode == "li") cpu.op_li(tokens);
-    else if (opcode == "DUMP_PROCESSOR_STATE") cpu.op_dump_processor_state();
+    else if (opcode == "dump_processor_state") cpu.op_dump_processor_state();
     else if (opcode == "addu") cpu.op_addu(tokens);
     else if (opcode == "subu") cpu.op_subu(tokens);
     else if (opcode == "andi") cpu.op_andi(tokens);
@@ -619,7 +792,8 @@ bool VirtualMachine::execute_instruction(const string& instruction_line) {
     else if (opcode == "move") cpu.op_move(tokens);
     else if (opcode == "mfhi") cpu.op_mfhi(tokens);
     else if (opcode == "mflo") cpu.op_mflo(tokens);
-    else if (opcode == "SNAPSHOT") {
+    else if (opcode == "migrate") cpu.op_migrate(tokens);
+    else if (opcode == "snapshot") {
         if (tokens.size() != 1) {
             cerr << "Error: At line " << cpu.get_pc() + 1 << ": SNAPSHOT instruction requires exactly one filename argument." << endl;
             return false;
@@ -638,6 +812,12 @@ uint32_t VirtualMachine::get_current_pc() const {
     return cpu.get_pc();
 }
 
+// Public method to allow setting the CPU state, used by the server
+// to load the state of a migrated VM.
+void VirtualMachine::set_cpu_state(const CPUState& new_state) {
+    cpu.set_cpu_state(new_state);
+}
+
 // --- Main Application Logic ---
 
 // Holds information needed to launch a VM, including config and optional snapshot.
@@ -647,34 +827,115 @@ struct VMInfo {
 };
 
 int main(int argc, char *argv[]) {
-    // Vector to hold information about each VM to be created.
     vector<VMInfo> vm_infos;
     int opt;
+    bool server_mode = false;
+    int port = 0;
+    bool v_flag_present = false;
 
-    // Parse command-line arguments for VM configuration and snapshot files.
-    while ((opt = getopt(argc, argv, "v:s:")) != -1) {
+    // Parse command-line arguments.
+    while ((opt = getopt(argc, argv, "v:s:p:")) != -1) {
         switch (opt) {
             case 'v':
-                // A new VM is defined. Store its config file.
+                v_flag_present = true;
                 vm_infos.push_back({string(optarg), ""});
                 break;
             case 's':
-                // A snapshot is specified for the most recently defined VM.
                 if (vm_infos.empty()) {
                     cerr << "Error: -s flag must be preceded by a -v flag." << endl;
                     return EXIT_FAILURE;
                 }
                 vm_infos.back().snapshot_file = optarg;
                 break;
+            case 'p':
+                server_mode = true;
+                port = atoi(optarg);
+                break;
             default:
-                cerr << "Usage: myvmm -v <config_file> [-s <snapshot_file>] ..." << endl;
+                cerr << "Usage: myvmm -v <config_file> [-s <snapshot_file>] ... | -p <port>" << endl;
                 return EXIT_FAILURE;
         }
     }
 
-    // Ensure at least one VM configuration is provided.
+    // Server mode logic
+    if (server_mode) {
+        if (v_flag_present || !vm_infos.empty()) {
+            cerr << "Error: -p option cannot be used with -v or -s." << endl;
+            return EXIT_FAILURE;
+        }
+        cout << "Server mode enabled. Waiting for migration on port " << port << "..." << endl;
+
+        // 1. Setup TCP listening socket.
+        int server_fd, new_socket;
+        struct sockaddr_in address;
+        int opt = 1;
+        int addrlen = sizeof(address);
+
+        if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+            perror("socket failed");
+            exit(EXIT_FAILURE);
+        }
+
+        if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+            perror("setsockopt");
+            exit(EXIT_FAILURE);
+        }
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = INADDR_ANY;
+        address.sin_port = htons(port);
+
+        if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+            perror("bind failed");
+            exit(EXIT_FAILURE);
+        }
+        if (listen(server_fd, 3) < 0) {
+            perror("listen");
+            exit(EXIT_FAILURE);
+        }
+
+        // 2. Wait for and accept a connection from a migrating client.
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept");
+            exit(EXIT_FAILURE);
+        }
+
+        // 3. Read the serialized state data from the client.
+        cout << "Connection accepted. Receiving state..." << endl;
+        char buffer[4096] = {0};
+        string received_data;
+        int valread;
+        while ((valread = read(new_socket, buffer, 4095)) > 0) {
+            received_data.append(buffer, valread);
+        }
+        close(new_socket);
+        close(server_fd);
+        cout << "State received. Deserializing..." << endl;
+
+        // 4. Deserialize the data to reconstruct the CPU state.
+        CPUState received_state = deserialize_state(received_data);
+        
+        cout << "State deserialized. PC is: " << received_state.PC << ". Resuming VM..." << endl;
+
+        // 5. Create a new VM instance and load the received state.
+        // For this project, we assume the server knows which program to run.
+        // We hardcode the config file that points to the comprehensive test binary.
+        VirtualMachine migrated_vm("config_comprehensive_test.txt", "");
+        migrated_vm.set_cpu_state(received_state);
+
+        // 6. Run the migrated VM to resume execution.
+        if (migrated_vm.run()) {
+            cout << "Migrated VM completed." << endl;
+        } else {
+            cout << "Migrated VM failed." << endl;
+        }
+
+        return 0;
+    }
+
+    // VM execution mode logic
     if (vm_infos.empty()) {
-        cerr << "Error: At least one config file must be provided with -v." << endl;
+        cerr << "Error: At least one config file must be provided with -v, or use -p for server mode." << endl;
+        cerr << "Usage: myvmm -v <config_file> [-s <snapshot_file>] ... | -p <port>" << endl;
         return EXIT_FAILURE;
     }
 

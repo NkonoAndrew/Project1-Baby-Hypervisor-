@@ -1,85 +1,88 @@
 # Baby Hypervisor
 
-This project is a lightweight, text-based hypervisor that simulates the execution of multiple Virtual Machines (VMs). It demonstrates core virtualization concepts, including VM management, configuration parsing, isolated instruction execution, and state snapshotting.
+This project implements a simple Virtual Machine Monitor (VMM), also known as a hypervisor, capable of running custom assembly programs. It supports a MIPS-like instruction set, state snapshots, and a full cold migration feature that allows a running Virtual Machine (VM) to be transferred from one VMM instance to another over the network.
 
-Each VM runs a program in a simplified, MIPS-like assembly language. The hypervisor can start a VM from scratch or restore its exact state from a previously saved snapshot file.
+## Features
 
-## Key Features
+- **Virtual Machine Execution**: Runs programs written in a custom MIPS-like assembly language.
+- **Multi-VM Execution**: Run multiple VMs sequentially in a single command.
+- **State Dumps**: The `DUMP_PROCESSOR_STATE` instruction prints the current state of all CPU registers.
+- **Snapshots**: The `SNAPSHOT <filename>` instruction saves the current CPU state to a file. VMs can also be started from a snapshot.
+- **Cold Migration**: The `MIGRATE <IP:PORT>` instruction serializes the entire VM state and transfers it to a listening server, which then resumes execution.
 
-- **Multi-VM Management**: Load and run multiple VMs, specified via command-line arguments.
-- **Configuration Files**: Each VM is defined by a simple `.txt` file that points to its binary program.
-- **State Snapshots**:
-  - **Save State**: A running VM can execute a `SNAPSHOT` instruction to save its complete CPU state (registers, PC) to a file.
-  - **Load State**: The hypervisor can launch a VM directly from a snapshot file, resuming execution exactly where it left off.
-- **MIPS-like Instruction Set**: The VM's processor supports a subset of MIPS arithmetic and logical instructions.
-- **Robust Error Handling**: The instruction parser validates formats and operand types, exiting on errors to prevent undefined behavior.
+## How to Compile
 
-## How to Use
-
-### 1. Build the Program
-
-Compile the project using the provided `Makefile`. This creates the `myvmm` executable.
+The project uses a standard `Makefile`. To compile, simply run `make` in the project directory.
 
 ```bash
 make
 ```
 
-### 2. Run the Hypervisor
+This will produce an executable named `myvmm`.
 
-Execute the program from your terminal, using flags to specify configurations and optional snapshots.
+## How to Run & Test
 
-**Syntax:**
-```bash
-./myvmm -v <config_file> [-s <snapshot_file>] ...
-```
+The VMM has two primary modes of operation: **Client Mode** (for running VMs locally) and **Server Mode** (for receiving migrated VMs).
 
-- `-v <config_file>`: **(Required)** Specifies a VM to run via its configuration file.
-- `-s <snapshot_file>`: **(Optional)** Loads the VM state from a snapshot. This flag applies to the most recent `-v` flag.
+### Testing the Full Migration Feature
 
-**Examples:**
+This is the primary test case for the cold migration feature. You will need **two terminals**.
 
-- **Run two VMs from scratch:**
-  ```bash
-  ./myvmm -v config_file_vm1.txt -v config_file_vm2.txt
-  ```
+---
 
-- **Run one VM from a snapshot:**
-  ```bash
-  ./myvmm -v config_file_vm1.txt -s snapshot_vm1
-  ```
+#### **Terminal 1: The Server**
 
-- **Run two VMs—one from a snapshot, one from scratch:**
-  ```bash
-  ./myvmm -v config_file_vm1.txt -s snapshot_vm1 -v config_file_vm2.txt
-  ```
+Start the VMM in server mode to listen for the migration.
 
-## Supported MIPS Instructions
+1.  **Run the command:**
+    ```bash
+    ./myvmm -p 12345
+    ```
+2.  The server will start and wait. Leave this terminal open.
 
-The simulator supports the following instructions. Invalid instruction formats or operand counts will cause the program to exit with an error.
+---
 
-| Instruction | Example                  | Description                                       |
-|-------------|--------------------------|---------------------------------------------------|
-| `li`        | `li $1, 100`             | Load Immediate: Loads a constant into a register. |
-| `add`       | `add $3, $1, $2`         | Add: Adds two registers and stores in a third.    |
-| `sub`       | `sub $4, $2, $1`         | Subtract: Subtracts two registers.                |
-| `addi`      | `addi $5, $1, 25`        | Add Immediate: Adds a register and a constant.    |
-| `mul`       | `mul $7, $1, $2`         | Multiply: Multiplies two registers.               |
-| `and`       | `and $8, $1, $2`         | Bitwise AND (Register).                           |
-| `or`        | `or $9, $1, $2`          | Bitwise OR (Register).                            |
-| `xor`       | `xor $10, $1, $2`        | Bitwise XOR (Register).                           |
-| `ori`       | `ori $11, $2, 100`       | Bitwise OR (Immediate).                           |
-| `sll`       | `sll $12, $1, 2`         | Shift Left Logical.                               |
-| `srl`       | `srl $13, $1, 2`         | Shift Right Logical.                              |
-| `move`      | `move $1, $2`            | Move: Copies the value of one register to another.|
-| `mult`      | `mult $1, $2`            | Multiply: Stores 64-bit result in `HI`/`LO`.      |
-| `div`       | `div $1, $2`             | Divide: Stores quotient in `LO`, remainder in `HI`.|
-| `mfhi`      | `mfhi $3`                | Move From HI: Copies `HI` to a register.          |
-| `mflo`      | `mflo $3`                | Move From LO: Copies `LO` to a register.          |
+#### **Terminal 2: The Client**
 
-### Special Instructions
+Start the VM that will execute the `MIGRATE` instruction.
 
-| Instruction              | Example                             | Description                                           |
-|--------------------------|-------------------------------------|-------------------------------------------------------|
-| `DUMP_PROCESSOR_STATE`   | `DUMP_PROCESSOR_STATE`              | Prints the current CPU register values to the console.|
-| `SNAPSHOT`               | `SNAPSHOT my_snapshot.snap`         | Saves the current CPU state to the specified file.    |
+1.  **Run the command:**
+    ```bash
+    ./myvmm -v config_comprehensive_test.txt
+    ```
+2.  The client VM will run, print its state, send the migration data to the server, and then exit. The server will then resume execution.
+
+---
+
+### Testing Legacy Features (Multi-VM and Snapshots)
+
+These tests verify the original functionality of running multiple VMs and loading from snapshots. These tests only require a single terminal.
+
+#### 1. Run Two VMs from Scratch
+
+This test runs two separate virtual machines in sequence.
+
+-   **Command:**
+    ```bash
+    ./myvmm -v config_file_vm1.txt -v config_file_vm2.txt
+    ```
+
+#### 2. Run One VM from a Snapshot
+
+This test loads `vm1` directly from the state saved in `snapshot_vm1`, skipping the initial instructions.
+
+-   **Command:**
+    ```bash
+    ./myvmm -v config_file_vm1.txt -s snapshot_vm1
+    ```
+
+#### 3. Run a Mixed Sequence
+
+This test runs the first VM from a snapshot and the second VM from scratch.
+
+-   **Command:**
+    ```bash
+    ./myvmm -v config_file_vm1.txt -s snapshot_vm1 -v config_file_vm2.txt
+    ```
+
 
